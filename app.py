@@ -332,8 +332,6 @@ def admin_payroll():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    PENALTY_PER_LEAVE_DAY = 50.00 
-    
     if request.method == 'POST':
         emp_id = request.form['employee_id']
         pay_period = request.form['pay_period']
@@ -343,6 +341,7 @@ def admin_payroll():
         standard_deductions = float(request.form['deductions'])
         tax = float(request.form['tax'])
         
+        # Fetch approved leaves from database
         cursor.execute("SELECT start_date, end_date FROM Leave_Table WHERE employee_id = %s AND status = 'Approved'", (emp_id,))
         approved_leaves = cursor.fetchall()
         
@@ -360,19 +359,41 @@ def admin_payroll():
             except Exception as e:
                 pass
         
-        leave_penalty = total_leave_days * PENALTY_PER_LEAVE_DAY
-        total_earnings = base_pay + allowances + bonuses
-        total_deductions = standard_deductions + tax + leave_penalty
-        net_pay = total_earnings - total_deductions
+        # --- NEW DYNAMIC LOP CALCULATION LOGIC ---
+        
+        # Convert total leave days to hours (assuming an 8-hour workday)
+        hours_absent = total_leave_days * 8
+        
+        # Step 1: Calculate Monthly Gross
+        monthly_gross_salary = base_pay + allowances + bonuses
+        
+        # Step 2: Convert to Annual Salary
+        annual_salary = monthly_gross_salary * 12
+        
+        # Step 3: Calculate Weekly Salary
+        weekly_salary = annual_salary / 52
+        
+        # Step 4: Determine Hourly Rate
+        hourly_rate = weekly_salary / 40
+        
+        # Step 5: Calculate Total LOP Deduction
+        total_lop_deduction = hourly_rate * hours_absent
+        
+        # Final Net Pay Math (Gross minus standard deductions, tax, and the new LOP penalty)
+        total_combined_deductions = standard_deductions + tax + total_lop_deduction
+        net_monthly_pay = monthly_gross_salary - total_combined_deductions
+        
         pay_date = datetime.today().strftime('%Y-%m-%d')
         
+        # Insert the finalized payroll data into the database
         cursor.execute("""
             INSERT INTO Salary (employee_id, pay_period, base_pay, allowances, bonuses, deductions, tax, net_pay, status, pay_date) 
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Paid', %s)
-        """, (emp_id, pay_period, base_pay, allowances, bonuses, (standard_deductions + leave_penalty), tax, net_pay, pay_date))
+        """, (emp_id, pay_period, base_pay, allowances, bonuses, (standard_deductions + total_lop_deduction), tax, net_monthly_pay, pay_date))
         conn.commit()
         
-        flash(f'Salary processed! {total_leave_days} leave days deducted at ${PENALTY_PER_LEAVE_DAY}/day. Final Net Pay: ${net_pay:.2f}')
+        # Flash message updated to show the exact dynamic breakdown!
+        flash(f'Salary processed! LOP Deduction: ${total_lop_deduction:.2f} ({hours_absent} hrs at ${hourly_rate:.2f}/hr). Final Net Pay: ${net_monthly_pay:.2f}')
         return redirect(url_for('admin_payroll'))
         
     cursor.execute("SELECT employee_id, first_name, last_name FROM Employee WHERE role = 'Employee'")
