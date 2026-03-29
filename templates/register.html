@@ -1,81 +1,50 @@
 {% extends 'base.html' %}
+
 {% block content %}
-<div class="glass-panel" style="max-width: 800px;">
-    <h2 style="font-family: 'Syne', sans-serif; font-size: 28px; color: var(--primary); margin-bottom: 30px; text-align: center;">
-        {% if session.get('role') == 'HR' %} Add New Employee {% else %} Employee Registration {% endif %}
-    </h2>
-    
-    <form method="POST" action="{{ url_for('register') }}" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-        <input type="text" name="first_name" placeholder="First Name" required class="form-input" pattern="[A-Za-z\s]+" title="Only letters and spaces are allowed">
-        <input type="text" name="last_name" placeholder="Last Name" required class="form-input" pattern="[A-Za-z\s]+" title="Only letters and spaces are allowed">
+<div class="glass-panel" style="max-width: 600px; text-align: center;">
+    <h2 style="font-family: 'Syne', sans-serif; font-size: 32px; color: var(--primary); margin-bottom: 10px;">Join the Team</h2>
+    <p style="color: rgba(255,255,255,0.7); margin-bottom: 30px;">Submit your details. HR will assign your ID and temporary password.</p>
+
+    <form action="{{ url_for('register') }}" method="POST" style="text-align: left;">
         
-        <div style="display: flex; flex-direction: column;">
-            <label style="color: rgba(255,255,255,0.6); font-size: 12px; margin-bottom: 5px; margin-left: 10px;">Date of Birth</label>
-            <input type="date" id="dob-input" name="dob" required class="form-input" style="color-scheme: dark;">
-        </div>
-        
-        <div style="display: flex; flex-direction: column;">
-            <label style="color: rgba(255,255,255,0.6); font-size: 12px; margin-bottom: 5px; margin-left: 10px;">Gender</label>
-            <select name="gender" class="form-input" style="background: var(--dark-2);">
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-            </select>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+            <div>
+                <label style="color: var(--primary); font-size: 14px;">First Name</label>
+                <input type="text" name="first_name" required style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff;">
+            </div>
+            <div>
+                <label style="color: var(--primary); font-size: 14px;">Last Name</label>
+                <input type="text" name="last_name" required style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff;">
+            </div>
         </div>
 
-        <input type="text" name="job_title" placeholder="Job Title" required class="form-input" pattern="[A-Za-z\s]+" title="Job title must contain only letters and spaces">
-        <input type="text" name="contact" placeholder="Contact Number (10 Digits)" required class="form-input" pattern="\d{10}" maxlength="10" title="Phone number must be exactly 10 digits">
-        
-        <div style="display: flex; flex-direction: column;">
-            <input type="password" id="reg-password" name="password" placeholder="Create Password" required class="form-input" onkeyup="checkPasswordStrength()">
-            <div id="password-strength" style="font-size: 12px; margin-top: 5px; margin-left: 10px; min-height: 15px;"></div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+            <div>
+                <label style="color: var(--primary); font-size: 14px;">Date of Birth</label>
+                <input type="date" name="dob" required style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff; color-scheme: dark;">
+            </div>
+            <div>
+                <label style="color: var(--primary); font-size: 14px;">Gender</label>
+                <select name="gender" required style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff;">
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
         </div>
-        
-        <input type="number" name="employee_id" placeholder="Assign Employee ID (Numbers only)" required class="form-input">
-        
-        <div style="grid-column: 1 / -1; margin-top: 20px;">
-            <button type="submit" class="btn-primary">
-                {% if session.get('role') == 'HR' %} Create Profile {% else %} Register Account {% endif %}
-            </button>
+
+        <div style="margin-bottom: 15px;">
+            <label style="color: var(--primary); font-size: 14px;">Job Title</label>
+            <input type="text" name="job_title" required style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff;">
         </div>
+
+        <div style="margin-bottom: 30px;">
+            <label style="color: var(--primary); font-size: 14px;">Contact Number</label>
+            <input type="text" name="contact" required style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff;">
+        </div>
+
+        <button type="submit" class="btn-primary">Submit Request to HR</button>
+        <a href="{{ url_for('employee_login') }}" class="btn-secondary">Back to Login</a>
     </form>
-
-    <div style="margin-top: 20px; text-align: center;">
-        {% if session.get('role') == 'HR' %}
-            <a href="{{ url_for('admin_employees') }}" style="color: var(--primary); text-decoration: none; font-size: 14px; transition: 0.3s;">&larr; Back to Employee Directory</a>
-        {% else %}
-            <a href="{{ url_for('index') }}" style="color: var(--primary); text-decoration: none; font-size: 14px; transition: 0.3s;">&larr; Return to Home</a>
-        {% endif %}
-    </div>
 </div>
-
-<style>
-    .form-input { width: 100%; padding: 16px 20px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #fff; font-family: 'Outfit', sans-serif; transition: all 0.3s ease;}
-    .form-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 15px var(--glow-cyan);}
-    .form-input::placeholder { color: rgba(255,255,255,0.4);}
-    a:hover { color: #fff !important; text-shadow: 0 0 10px var(--glow-cyan); }
-</style>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        let today = new Date().toISOString().split('T')[0];
-        document.getElementById('dob-input').setAttribute('max', today); 
-    });
-
-    function checkPasswordStrength() {
-        var strengthText = document.getElementById("password-strength");
-        var pwd = document.getElementById("reg-password").value;
-        var strength = 0;
-        if(pwd.length > 5) strength += 1;
-        if(pwd.length > 7) strength += 1;
-        if(pwd.match(/[a-z]+/)) strength += 1;
-        if(pwd.match(/[A-Z]+/)) strength += 1;
-        if(pwd.match(/[0-9]+/)) strength += 1;
-        if(pwd.match(/[$@#&!]+/)) strength += 1;
-        if(pwd.length == 0) strengthText.innerHTML = "";
-        else if(strength < 3) strengthText.innerHTML = "<span style='color: #e84118;'>Weak: Add numbers & special characters</span>";
-        else if(strength >= 3 && strength < 5) strengthText.innerHTML = "<span style='color: #fbc531;'>Medium: Getting better</span>";
-        else strengthText.innerHTML = "<span style='color: #4cd137;'>Strong: Highly secure!</span>";
-    }
-</script>
 {% endblock %}

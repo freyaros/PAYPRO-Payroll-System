@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 import mysql.connector
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
-
+import re
 app = Flask(__name__)
 app.secret_key = 'nexaverse_payroll_super_secret_key' 
 
@@ -13,6 +13,20 @@ def get_db_connection():
         password='root', # Make sure to change this to your actual MySQL password!
         database='EmployeeManagement'
     )
+
+def check_password_strength(password):
+    """Returns True if password is strong, False otherwise."""
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters long."
+    if not re.search(r"[A-Z]", password):
+        return False, "Password must contain at least one uppercase letter."
+    if not re.search(r"[a-z]", password):
+        return False, "Password must contain at least one lowercase letter."
+    if not re.search(r"[0-9]", password):
+        return False, "Password must contain at least one number."
+    if not re.search(r"[@$!%*?&#]", password):
+        return False, "Password must contain at least one special character (@$!%*?&#)."
+    return True, "Password is strong."
 
 # --- PUBLIC ROUTES ---
 @app.route('/')
@@ -91,36 +105,27 @@ def hr_login():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    # Employees no longer register themselves or set passwords/IDs here
     if request.method == 'POST':
-        emp_id = request.form['employee_id'] 
         first_name = request.form['first_name']
         last_name = request.form['last_name']
         dob = request.form['dob']
         gender = request.form['gender']
         job_title = request.form['job_title']
         contact = request.form['contact']
-        hashed_password = generate_password_hash(request.form['password'])
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        try:
-            cursor.execute("""
-                INSERT INTO Employee (employee_id, first_name, last_name, dob, gender, job_title, contact, password, role) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Employee')
-            """, (emp_id, first_name, last_name, dob, gender, job_title, contact, hashed_password))
-            conn.commit()
-            
-            if session.get('loggedin') and session.get('role') == 'HR':
-                flash(f'New employee ({first_name} {last_name}) added successfully!')
-                return redirect(url_for('admin_employees'))
-            else:
-                flash('Registration successful! You can now login.')
-                return redirect(url_for('employee_login'))
-        except mysql.connector.IntegrityError:
-            flash('Error: That Employee ID is already taken.')
-        finally:
-            cursor.close()
-            conn.close()
+        cursor.execute("""
+            INSERT INTO Join_Requests (first_name, last_name, dob, gender, job_title, contact) 
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (first_name, last_name, dob, gender, job_title, contact))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        flash('Join Request sent to HR! You will receive your sequential Employee ID and temporary password once approved.')
+        return redirect(url_for('employee_login'))
     return render_template('register.html')
 
 @app.route('/hr_register', methods=['GET', 'POST'])
@@ -303,28 +308,111 @@ def hr_dashboard():
     if 'loggedin' not in session or session.get('role') != 'HR': return redirect(url_for('hr_login'))
     return render_template('hr_dashboard.html', first_name=session['first_name'])
 
-@app.route('/admin/employees')
+@app.route('/admin/employees', methods=['GET', 'POST'])
 def admin_employees():
     if 'loggedin' not in session or session.get('role') != 'HR': return redirect(url_for('hr_login'))
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
+    
+    # If HR is approving a request and setting the initial password
+    if request.method == 'POST':
+        req_id = request.form.get('request_id')
+        first_name = request.form['first_name']
+        last_name = request.form['last_name']
+        dob = request.form['dob']
+        gender = request.form['gender']
+        job_title = request.form['job_title']
+        contact = request.form['contact']
+        initial_password = request.form['initial_password'] 
+        
+        # Check Password Strength for HR
+        is_strong, msg = check_password_strength(initial_password)
+        if not is_strong:
+            flash(f'Cannot add employee. Initial Password Error: {msg}')
+            return redirect(url_for('admin_employees'))
+            
+        hashed_password = generate_password_hash(initial_password)
+        
+        try:
+            # Attempt to insert into Employee
+            cursor.execute("""
+                INSERT INTO Employee (first_name, last_name, dob, gender, job_title, contact, password, role) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'Employee')
+            """, (first_name, last_name, dob, gender, job_title, contact, hashed_password))
+            
+            # Mark request as approved
+            if req_id:
+                cursor.execute("UPDATE Join_Requests SET status = 'Approved' WHERE request_id = %s", (req_id,))
+                
+            conn.commit()
+            flash('Employee added successfully! Their initial password is set.')
+            
+        except mysql.connector.Error as err:
+            # THIS CATCHES OUR CUSTOM DBMS TRIGGER ERROR!
+            flash(f'{err.msg}') 
+            
+        return redirect(url_for('admin_employees'))
+        
+        hashed_password = generate_password_hash(initial_password)
+        
+        # Insert into Employee (Database auto-generates the ID!)
+        cursor.execute("""
+            INSERT INTO Employee (first_name, last_name, dob, gender, job_title, contact, password, role) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'Employee')
+        """, (first_name, last_name, dob, gender, job_title, contact, hashed_password))
+        
+        # Mark request as approved
+        if req_id:
+            cursor.execute("UPDATE Join_Requests SET status = 'Approved' WHERE request_id = %s", (req_id,))
+            
+        conn.commit()
+        flash(f'Employee added successfully! Their initial password is set.')
+        return redirect(url_for('admin_employees'))
+        
     cursor.execute("SELECT * FROM Employee WHERE role = 'Employee' ORDER BY employee_id DESC")
     employees = cursor.fetchall()
+    
+    cursor.execute("SELECT * FROM Join_Requests WHERE status = 'Pending' ORDER BY request_date ASC")
+    pending_requests = cursor.fetchall()
+    
     cursor.close()
     conn.close()
-    return render_template('admin_employees.html', employees=employees)
+    return render_template('admin_employees.html', employees=employees, requests=pending_requests)
 
-@app.route('/admin/delete_employee/<int:emp_id>')
-def delete_employee(emp_id):
-    if 'loggedin' not in session or session.get('role') != 'HR': return redirect(url_for('hr_login'))
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM Employee WHERE employee_id = %s", (emp_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
-    flash('Employee record deleted successfully.')
-    return redirect(url_for('admin_employees'))
+@app.route('/change_password', methods=['GET', 'POST'])
+def change_password():
+    if 'loggedin' not in session: return redirect(url_for('employee_login'))
+    
+    if request.method == 'POST':
+        current_password = request.form['current_password']
+        new_password = request.form['new_password']
+        
+        # --- NEW: Check Password Strength ---
+        is_strong, msg = check_password_strength(new_password)
+        if not is_strong:
+            flash(f'Security Error: {msg}')
+            return redirect(url_for('change_password'))
+        # ------------------------------------
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT password FROM Employee WHERE employee_id = %s", (session['employee_id'],))
+        user = cursor.fetchone()
+        
+        if user and check_password_hash(user['password'], current_password):
+            hashed_new = generate_password_hash(new_password)
+            # The database Trigger we made will automatically detect this UPDATE!
+            cursor.execute("UPDATE Employee SET password = %s WHERE employee_id = %s", (hashed_new, session['employee_id']))
+            conn.commit()
+            flash('Password updated successfully! Event logged by database trigger.')
+        else:
+            flash('Incorrect current password.')
+            
+        cursor.close()
+        conn.close()
+        return redirect(url_for('change_password'))
+        
+    return render_template('change_password.html')
 
 @app.route('/admin/payroll', methods=['GET', 'POST'])
 def admin_payroll():
@@ -341,7 +429,7 @@ def admin_payroll():
         standard_deductions = float(request.form['deductions'])
         tax = float(request.form['tax'])
         
-        # Fetch approved leaves from database
+        # 1. Fetch all "Approved" leaves
         cursor.execute("SELECT start_date, end_date FROM Leave_Table WHERE employee_id = %s AND status = 'Approved'", (emp_id,))
         approved_leaves = cursor.fetchall()
         
@@ -354,46 +442,47 @@ def admin_payroll():
                 else:
                     start = leave['start_date']
                     end = leave['end_date']
-                days = (end - start).days + 1 
-                total_leave_days += days
+                total_leave_days += (end - start).days + 1 
             except Exception as e:
-                pass
+                print(f"Date math error: {e}")
         
-        # --- NEW DYNAMIC LOP CALCULATION LOGIC ---
+        # --- ⚙️ NEW LOP CALCULATION LOGIC ---
         
-        # Convert total leave days to hours (assuming an 8-hour workday)
+        # Assumption: 1 Leave Day = 8 Hours absent (40 hrs / 5 days)
         hours_absent = total_leave_days * 8
         
-        # Step 1: Calculate Monthly Gross
+        # Base input for the formula
         monthly_gross_salary = base_pay + allowances + bonuses
         
-        # Step 2: Convert to Annual Salary
+        # Step 1: Convert Monthly to Annual
         annual_salary = monthly_gross_salary * 12
         
-        # Step 3: Calculate Weekly Salary
+        # Step 2: Calculate Weekly Salary
         weekly_salary = annual_salary / 52
         
-        # Step 4: Determine Hourly Rate
+        # Step 3: Determine Hourly Rate
         hourly_rate = weekly_salary / 40
         
-        # Step 5: Calculate Total LOP Deduction
+        # Step 4: Calculate Total LOP Deduction
         total_lop_deduction = hourly_rate * hours_absent
         
-        # Final Net Pay Math (Gross minus standard deductions, tax, and the new LOP penalty)
-        total_combined_deductions = standard_deductions + tax + total_lop_deduction
-        net_monthly_pay = monthly_gross_salary - total_combined_deductions
+        # Step 5: Calculate Final Monthly Pay (Including standard taxes/deductions)
+        total_deductions = standard_deductions + tax + total_lop_deduction
+        net_monthly_pay = monthly_gross_salary - total_deductions
+        
+        # -----------------------------------
         
         pay_date = datetime.today().strftime('%Y-%m-%d')
         
-        # Insert the finalized payroll data into the database
+        # Insert into database, combining standard deductions with the new LOP deduction
         cursor.execute("""
             INSERT INTO Salary (employee_id, pay_period, base_pay, allowances, bonuses, deductions, tax, net_pay, status, pay_date) 
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Paid', %s)
         """, (emp_id, pay_period, base_pay, allowances, bonuses, (standard_deductions + total_lop_deduction), tax, net_monthly_pay, pay_date))
         conn.commit()
         
-        # Flash message updated to show the exact dynamic breakdown!
-        flash(f'Salary processed! LOP Deduction: ${total_lop_deduction:.2f} ({hours_absent} hrs at ${hourly_rate:.2f}/hr). Final Net Pay: ${net_monthly_pay:.2f}')
+        # Flash dynamic success message
+        flash(f'Salary processed! {hours_absent} hrs absent. Hourly Rate: ${hourly_rate:.2f}. LOP Deduction: ${total_lop_deduction:.2f}. Final Net Pay: ${net_monthly_pay:.2f}')
         return redirect(url_for('admin_payroll'))
         
     cursor.execute("SELECT employee_id, first_name, last_name FROM Employee WHERE role = 'Employee'")
