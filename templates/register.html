@@ -37,11 +37,11 @@
             <label style="color: var(--primary); font-size: 14px;">Job Title</label>
             <input type="text" name="job_title" required style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff;">
         </div>
-
+            
         <div style="margin-bottom: 30px;">
-            <label style="color: var(--primary); font-size: 14px;">Contact Number</label>
-            <input type="text" name="contact" required style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff;">
-        </div>
+    <label style="color: var(--primary); font-size: 14px;">Contact Number</label>
+    <input type="text" name="contact" pattern="[6-9][0-9]{9}" title="Enter a valid 10-digit mobile number starting with 6,7,8 or 9" maxlength="10" required style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff;">
+</div>
 
         <button type="submit" class="btn-primary">Submit Request to HR</button>
         <a href="{{ url_for('employee_login') }}" class="btn-secondary">Back to Login</a>

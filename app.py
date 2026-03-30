@@ -29,6 +29,10 @@ def check_password_strength(password):
         return False, "Password must contain at least one special character (@$!%*?&#)."
     return True, "Password is strong."
 
+def is_valid_indian_mobile(mobile):
+    """Returns True if it's a valid 10-digit Indian mobile number."""
+    return bool(re.match(r"^[6-9]\d{9}$", mobile))
+
 # --- PUBLIC ROUTES ---
 @app.route('/')
 def index(): return render_template('index.html')
@@ -137,7 +141,6 @@ def hr_login():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    # Employees no longer register themselves or set passwords/IDs here
     if request.method == 'POST':
         first_name = request.form['first_name']
         last_name = request.form['last_name']
@@ -145,6 +148,11 @@ def register():
         gender = request.form['gender']
         job_title = request.form['job_title']
         contact = request.form['contact']
+
+        # Validate Indian Mobile Number (10 digits starting with 6-9)
+        if not is_valid_indian_mobile(contact):
+            flash('Invalid Contact! Must be a 10-digit Indian mobile number starting with 6-9.')
+            return redirect(url_for('register'))
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -156,7 +164,7 @@ def register():
         cursor.close()
         conn.close()
         
-        flash('Join Request sent to HR! You will receive your sequential Employee ID and temporary password once approved.')
+        flash('Join Request sent to HR! You will receive your Employee ID and password once approved.')
         return redirect(url_for('employee_login'))
     return render_template('register.html')
 
@@ -507,7 +515,8 @@ def admin_payroll():
         conn.commit()
         
         # Flash dynamic success message
-        flash(f'Salary processed! {hours_absent} hrs absent. Hourly Rate: ${hourly_rate:.2f}. LOP Deduction: ${total_lop_deduction:.2f}. Final Net Pay: ${net_monthly_pay:.2f}')
+        # Flash dynamic success message with RUPEES
+        flash(f'Salary processed! {hours_absent} hrs absent. Hourly Rate: ₹{hourly_rate:.2f}. LOP Deduction: ₹{total_lop_deduction:.2f}. Final Net Pay: ₹{net_monthly_pay:.2f}')
         return redirect(url_for('admin_payroll'))
         
     cursor.execute("SELECT employee_id, first_name, last_name FROM Employee WHERE role = 'Employee'")
