@@ -1,3 +1,4 @@
+from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 import mysql.connector
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -38,7 +39,24 @@ def about(): return render_template('about.html')
 @app.route('/contact')
 def contact(): return render_template('contact.html')
 
+@app.route('/admin/accrue_leaves')
+def admin_accrue_leaves():
+    if 'loggedin' not in session or session.get('role') != 'HR': return redirect(url_for('hr_login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # This adds 1 CL and 1 PL to every employee's existing balance (Carry-Forward!)
+    cursor.execute("UPDATE Employee SET cl_balance = cl_balance + 1, pl_balance = pl_balance + 1 WHERE role = 'Employee'")
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    flash('Monthly Accrual Complete! All employees received +1 Casual and +1 Paid leave.')
+    return redirect(url_for('admin_leaves'))
+
 # --- AUTHENTICATION & MULTI-SESSION CHECK-IN ---
+from datetime import datetime # Ensure this is at the very top of your app.py file
+
 @app.route('/employee_login', methods=['GET', 'POST'])
 def employee_login():
     if request.method == 'POST':
@@ -51,21 +69,34 @@ def employee_login():
         user = cursor.fetchone()
 
         if user and check_password_hash(user['password'], password):
+            # Block HR from using the Employee login
             if user.get('role') == 'HR':
                 flash('You are an HR Admin. Please use the HR Admin Portal.')
                 return redirect(url_for('employee_login'))
                 
+            # Set up the secure session
             session['loggedin'] = True
             session['employee_id'] = user['employee_id']
             session['first_name'] = user['first_name']
             session['role'] = 'Employee'
             
-            # AUTOMATED CHECK-IN (Forces a new session row every time they log in)
+            # --- NEW: AUTOMATED ATTENDANCE TIMER LOGIC ---
             today_date = datetime.today().strftime('%Y-%m-%d')
-            current_time = datetime.now().strftime('%H:%M:%S')
+            now = datetime.now() # Gets exact current date and time
             
-            cursor.execute("INSERT INTO Attendance (employee_id, date, check_in) VALUES (%s, %s, %s)", (emp_id, today_date, current_time))
+            # Check if they already logged in today
+            cursor.execute("SELECT * FROM Attendance WHERE employee_id = %s AND work_date = %s", (emp_id, today_date))
+            att = cursor.fetchone()
+            
+            if not att:
+                # First login of the day: Create the row and start the timer
+                cursor.execute("INSERT INTO Attendance (employee_id, work_date, last_login, total_seconds) VALUES (%s, %s, %s, 0)", (emp_id, today_date, now))
+            else:
+                # Logging back in: Just update last_login to resume the timer!
+                cursor.execute("UPDATE Attendance SET last_login = %s WHERE attendance_id = %s", (now, att['attendance_id']))
+                
             conn.commit()
+            # ---------------------------------------------
             
             cursor.close()
             conn.close()
@@ -74,8 +105,8 @@ def employee_login():
             flash('Incorrect Employee ID or Password!')
             cursor.close()
             conn.close()
+            
     return render_template('employee_login.html')
-
 @app.route('/hr_login', methods=['GET', 'POST'])
 def hr_login():
     if request.method == 'POST':
@@ -202,61 +233,69 @@ def reset_password():
 # --- AUTOMATED CHECK-OUT & MULTI-SESSION MATH ---
 @app.route('/logout')
 def logout():
-    if session.get('loggedin') and session.get('role') == 'Employee':
+    # --- NEW: PAUSE ATTENDANCE TIMER ---
+    if 'loggedin' in session and session.get('role') == 'Employee':
         emp_id = session['employee_id']
-        today_date = datetime.today().strftime('%Y-%m-%d')
+        today = datetime.today().strftime('%Y-%m-%d')
+        now = datetime.now()
         
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM Attendance WHERE employee_id = %s AND work_date = %s AND last_login IS NOT NULL", (emp_id, today))
+        att = cursor.fetchone()
         
-        # Grab the MOST RECENT check-in that doesn't have a check-out yet
-        cursor.execute("""
-            SELECT check_in FROM Attendance 
-            WHERE employee_id = %s AND date = %s AND (check_out IS NULL OR check_out = '') 
-            ORDER BY check_in DESC LIMIT 1
-        """, (emp_id, today_date))
-        record = cursor.fetchone()
-        
-        if record and record['check_in']:
-            try:
-                check_in_str = str(record['check_in']) 
-                
-                if len(check_in_str) > 5:
-                    t1 = datetime.strptime(check_in_str, '%H:%M:%S')
-                else:
-                    t1 = datetime.strptime(check_in_str, '%H:%M')
-                
-                now = datetime.now()
-                checkout_time_str = now.strftime('%H:%M:%S')
-                t2 = datetime.strptime(checkout_time_str, '%H:%M:%S')
-                
-                if t2 < t1:
-                    total_hours = 0.0
-                else:
-                    total_hours = round((t2 - t1).total_seconds() / 3600, 2)
-                    
-                # Update ONLY that exact session row using the matching check_in time
-                cursor.execute("""
-                    UPDATE Attendance 
-                    SET check_out = %s, total_hours = %s 
-                    WHERE employee_id = %s AND date = %s AND check_in = %s
-                """, (checkout_time_str, total_hours, emp_id, today_date, record['check_in']))
-                conn.commit()
-            except Exception as e:
-                print(f"Attendance Math Error: {e}")
-                
+        if att:
+            # Calculate time spent logged in during this session
+            time_diff = now - att['last_login']
+            seconds_worked = int(time_diff.total_seconds())
+            new_total = att['total_seconds'] + seconds_worked
+            
+            # Update total and set last_login to NULL (timer paused)
+            cursor.execute("UPDATE Attendance SET total_seconds = %s, last_login = NULL WHERE attendance_id = %s", (new_total, att['attendance_id']))
+            conn.commit()
+            
         cursor.close()
         conn.close()
-
+    # -----------------------------------
+    
+    # Clear session and log out
     session.clear()
-    return redirect(url_for('index'))
+    return redirect(url_for('employee_login'))
 
 # --- EMPLOYEE DASHBOARD ROUTES ---
 @app.route('/dashboard')
 def dashboard():
-    if 'loggedin' not in session or session.get('role') != 'Employee': return redirect(url_for('employee_login'))
-    return render_template('dashboard.html', first_name=session['first_name'])
+    if 'loggedin' not in session or session.get('role') != 'Employee': 
+        return redirect(url_for('employee_login'))
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # 1. Fetch Attendance (your existing timer code)
+    today = datetime.today().strftime('%Y-%m-%d')
+    cursor.execute("SELECT total_seconds, last_login FROM Attendance WHERE employee_id = %s AND work_date = %s", (session['employee_id'], today))
+    att_data = cursor.fetchone()
+    
+    current_total_seconds = 0
+    if att_data:
+        current_total_seconds = att_data['total_seconds']
+        if att_data['last_login']:
+            session_seconds = int((datetime.now() - att_data['last_login']).total_seconds())
+            current_total_seconds += session_seconds
 
+    # --- NEW: 2. Fetch Leave Balances ---
+    cursor.execute("SELECT cl_balance, pl_balance FROM Employee WHERE employee_id = %s", (session['employee_id'],))
+    emp_data = cursor.fetchone()
+    
+    cursor.close()
+    conn.close()
+    
+    # Pass the balances to the template
+    return render_template('dashboard.html', 
+                           first_name=session['first_name'], 
+                           worked_seconds=current_total_seconds,
+                           cl_balance=emp_data['cl_balance'],
+                           pl_balance=emp_data['pl_balance'])
 @app.route('/attendance')
 def attendance():
     if 'loggedin' not in session: return redirect(url_for('employee_login'))
@@ -353,21 +392,6 @@ def admin_employees():
             
         return redirect(url_for('admin_employees'))
         
-        hashed_password = generate_password_hash(initial_password)
-        
-        # Insert into Employee (Database auto-generates the ID!)
-        cursor.execute("""
-            INSERT INTO Employee (first_name, last_name, dob, gender, job_title, contact, password, role) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'Employee')
-        """, (first_name, last_name, dob, gender, job_title, contact, hashed_password))
-        
-        # Mark request as approved
-        if req_id:
-            cursor.execute("UPDATE Join_Requests SET status = 'Approved' WHERE request_id = %s", (req_id,))
-            
-        conn.commit()
-        flash(f'Employee added successfully! Their initial password is set.')
-        return redirect(url_for('admin_employees'))
         
     cursor.execute("SELECT * FROM Employee WHERE role = 'Employee' ORDER BY employee_id DESC")
     employees = cursor.fetchall()
@@ -429,8 +453,8 @@ def admin_payroll():
         standard_deductions = float(request.form['deductions'])
         tax = float(request.form['tax'])
         
-        # 1. Fetch all "Approved" leaves
-        cursor.execute("SELECT start_date, end_date FROM Leave_Table WHERE employee_id = %s AND status = 'Approved'", (emp_id,))
+        # Fetch ONLY "Unpaid" approved leaves to calculate Loss of Pay!
+        cursor.execute("SELECT start_date, end_date FROM Leave_Table WHERE employee_id = %s AND status = 'Approved' AND leave_type = 'Unpaid'", (emp_id,))
         approved_leaves = cursor.fetchall()
         
         total_leave_days = 0
@@ -496,9 +520,41 @@ def admin_leaves():
     if 'loggedin' not in session or session.get('role') != 'HR': return redirect(url_for('hr_login'))
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
+    
     if request.method == 'POST':
         leave_id = request.form['leave_id']
-        action = request.form['action']
+        action = request.form['action'] # Will be 'Approved' or 'Rejected'
+        
+        if action == 'Approved':
+            # 1. Get the leave details
+            cursor.execute("SELECT * FROM Leave_Table WHERE leave_id = %s", (leave_id,))
+            leave = cursor.fetchone()
+            
+            # 2. Get the employee's current balances
+            cursor.execute("SELECT cl_balance, pl_balance FROM Employee WHERE employee_id = %s", (leave['employee_id'],))
+            emp = cursor.fetchone()
+            
+            # 3. Calculate how many days they requested
+            start = datetime.strptime(str(leave['start_date']), '%Y-%m-%d')
+            end = datetime.strptime(str(leave['end_date']), '%Y-%m-%d')
+            requested_days = (end - start).days + 1
+            
+            # 4. Smart Balance Verification & Deduction
+            if leave['leave_type'] == 'Casual':
+                if emp['cl_balance'] >= requested_days:
+                    cursor.execute("UPDATE Employee SET cl_balance = cl_balance - %s WHERE employee_id = %s", (requested_days, leave['employee_id']))
+                else:
+                    flash(f"Approval Failed! Employee only has {emp['cl_balance']} Casual Leaves left.")
+                    return redirect(url_for('admin_leaves'))
+                    
+            elif leave['leave_type'] == 'Paid':
+                if emp['pl_balance'] >= requested_days:
+                    cursor.execute("UPDATE Employee SET pl_balance = pl_balance - %s WHERE employee_id = %s", (requested_days, leave['employee_id']))
+                else:
+                    flash(f"Approval Failed! Employee only has {emp['pl_balance']} Paid Leaves left.")
+                    return redirect(url_for('admin_leaves'))
+                    
+        # 5. Finally, update the status (Approved or Rejected)
         cursor.execute("UPDATE Leave_Table SET status = %s WHERE leave_id = %s", (action, leave_id))
         conn.commit()
         flash(f'Leave {action} successfully!')
