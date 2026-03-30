@@ -105,10 +105,14 @@ def employee_login():
             att = cursor.fetchone()
             
             if not att:
-                # First login of the day: Create the row and start the timer
-                cursor.execute("INSERT INTO Attendance (employee_id, work_date, last_login, total_seconds) VALUES (%s, %s, %s, 0)", (emp_id, today_date, now))
+                # First login of the day: Create the row, start the timer, AND record check_in
+                cursor.execute(
+                    "INSERT INTO Attendance (employee_id, work_date, check_in, last_login, total_seconds) VALUES (%s, %s, %s, %s, 0)", 
+                    (emp_id, today_date, now, now)
+                )
             else:
-                # Logging back in: Just update last_login to resume the timer!
+                # Logging back in: Just update last_login to resume the timer! 
+                # (We do NOT update check_in here, because we want to keep their original morning start time)
                 cursor.execute("UPDATE Attendance SET last_login = %s WHERE attendance_id = %s", (now, att['attendance_id']))
                 
             conn.commit()
@@ -282,8 +286,11 @@ def reset_password():
 # --- AUTOMATED CHECK-OUT & MULTI-SESSION MATH ---
 @app.route('/logout')
 def logout():
-    # --- NEW: PAUSE ATTENDANCE TIMER ---
-    if 'loggedin' in session and session.get('role') == 'Employee':
+    # 1. Save the role into a variable BEFORE clearing the session
+    user_role = session.get('role')
+
+    # --- PAUSE ATTENDANCE TIMER (Only for Employees) ---
+    if 'loggedin' in session and user_role == 'Employee':
         emp_id = session['employee_id']
         today = datetime.today().strftime('%Y-%m-%d')
         now = datetime.now()
@@ -299,18 +306,27 @@ def logout():
             seconds_worked = int(time_diff.total_seconds())
             new_total = att['total_seconds'] + seconds_worked
             
-            # Update total and set last_login to NULL (timer paused)
-            cursor.execute("UPDATE Attendance SET total_seconds = %s, last_login = NULL WHERE attendance_id = %s", (new_total, att['attendance_id']))
+            # Update total, pause timer, and record check_out time
+            cursor.execute(
+                "UPDATE Attendance SET total_seconds = %s, last_login = NULL, check_out = %s WHERE attendance_id = %s", 
+                (new_total, now, att['attendance_id'])
+            )
             conn.commit()
             
         cursor.close()
         conn.close()
     # -----------------------------------
     
-    # Clear session and log out
+    # 2. Now it is safe to clear the session
     session.clear()
-    return redirect(url_for('employee_login'))
 
+    # 3. Route them to the correct login page based on the saved variable
+    if user_role == 'HR':
+        # NOTE: Make sure 'hr_login' exactly matches the name of your HR login route!
+        return redirect(url_for('hr_login')) 
+    else:
+        return redirect(url_for('employee_login'))
+    
 # --- EMPLOYEE DASHBOARD ROUTES ---
 @app.route('/dashboard')
 def dashboard():
@@ -351,11 +367,11 @@ def attendance():
     emp_id = session['employee_id']
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM Attendance WHERE employee_id = %s ORDER BY date DESC, check_in DESC", (emp_id,))
+    cursor.execute("SELECT * FROM Attendance WHERE employee_id = %s ORDER BY work_date DESC, last_login DESC", (emp_id,))
     records = cursor.fetchall()
     cursor.close()
     conn.close()
-    return render_template('attendance.html', records=records)
+    return render_template('attendance.html', attendance_records=records)
 
 @app.route('/salary')
 def salary():
@@ -404,11 +420,13 @@ def hr_dashboard():
 
 @app.route('/admin/employees', methods=['GET', 'POST'])
 def admin_employees():
-    if 'loggedin' not in session or session.get('role') != 'HR': return redirect(url_for('hr_login'))
+    if 'loggedin' not in session or session.get('role') != 'HR': 
+        return redirect(url_for('hr_login'))
+        
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # If HR is approving a request and setting the initial password
+    # --- 1. HANDLING APPROVALS (Your exact POST logic) ---
     if request.method == 'POST':
         req_id = request.form.get('request_id')
         first_name = request.form['first_name']
@@ -447,16 +465,70 @@ def admin_employees():
             
         return redirect(url_for('admin_employees'))
         
-        
+    # --- 2. GET REQUEST: FETCH DATA & PREDICT IDs ---
     cursor.execute("SELECT * FROM Employee WHERE role = 'Employee' ORDER BY employee_id DESC")
     employees = cursor.fetchall()
     
+    # Predict the next Employee ID
+    cursor.execute("SELECT MAX(CAST(employee_id AS UNSIGNED)) AS max_id FROM Employee")
+    result = cursor.fetchone()
+    next_available_id = (result['max_id'] or 1000) + 1 
+    
+    # Fetch pending requests
     cursor.execute("SELECT * FROM Join_Requests WHERE status = 'Pending' ORDER BY request_date ASC")
     pending_requests = cursor.fetchall()
     
+    # Assign predicted_id for the frontend
+    for req in pending_requests:
+        req['predicted_id'] = next_available_id
+        next_available_id += 1 
+        
     cursor.close()
     conn.close()
     return render_template('admin_employees.html', employees=employees, requests=pending_requests)
+
+
+# --- THE NEW DECLINE ROUTE ---
+@app.route('/admin/decline_request/<int:request_id>', methods=['POST'])
+def decline_request(request_id):
+    if 'loggedin' not in session or session.get('role') != 'HR': 
+        return redirect(url_for('hr_login'))
+        
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("DELETE FROM Join_Requests WHERE request_id = %s", (request_id,))
+    conn.commit()
+    
+    cursor.close()
+    conn.close()
+    
+    flash('Join request declined and securely removed.')
+    return redirect(url_for('admin_employees'))
+
+# --- ROUTE TO REMOVE AN ACTIVE EMPLOYEE ---
+@app.route('/admin/delete_employee/<int:emp_id>')
+def delete_employee(emp_id):
+    # Security check: Only HR can delete employees
+    if 'loggedin' not in session or session.get('role') != 'HR': 
+        return redirect(url_for('hr_login'))
+        
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Securely delete the employee from the database
+        cursor.execute("DELETE FROM Employee WHERE employee_id = %s", (emp_id,))
+        conn.commit()
+        flash(f'Employee EMP-{emp_id} has been securely removed from the system.')
+    except Exception as e:
+        # Just in case they are tied to other tables and can't be deleted easily
+        flash(f'Error removing employee: {str(e)}')
+    finally:
+        cursor.close()
+        conn.close()
+        
+    return redirect(url_for('admin_employees'))
 
 @app.route('/change_password', methods=['GET', 'POST'])
 def change_password():

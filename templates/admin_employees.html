@@ -10,18 +10,23 @@
             <div style="overflow-x: auto;">
                 <table style="width: 100%; border-collapse: collapse; text-align: left; color: #fff;">
                     <tr style="border-bottom: 1px solid var(--secondary); color: var(--secondary);">
-                        <th style="padding: 10px;">Name</th>
+                        <th style="padding: 10px;">Predicted ID</th> <th style="padding: 10px;">Name</th>
                         <th style="padding: 10px;">Role</th>
                         <th style="padding: 10px;">Contact</th>
                         <th style="padding: 10px;">Action</th>
                     </tr>
                     {% for req in requests %}
                     <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <td style="padding: 10px; font-family: 'Courier New', monospace; font-size: 16px; color: #00f0ff; font-weight: bold;">
+                            {{ req.predicted_id }}
+                        </td>
                         <td style="padding: 10px;">{{ req.first_name }} {{ req.last_name }}</td>
                         <td style="padding: 10px;">{{ req.job_title }}</td>
                         <td style="padding: 10px;">{{ req.contact }}</td>
-                        <td style="padding: 10px;">
-                            <form action="{{ url_for('admin_employees') }}" method="POST" style="display:inline;">
+                        
+                        <td style="padding: 10px; display: flex; gap: 10px; align-items: center;">
+                            
+                            <form action="{{ url_for('admin_employees') }}" method="POST" style="margin: 0; display: flex; align-items: center;">
                                 <input type="hidden" name="request_id" value="{{ req.request_id }}">
                                 <input type="hidden" name="first_name" value="{{ req.first_name }}">
                                 <input type="hidden" name="last_name" value="{{ req.last_name }}">
@@ -33,6 +38,11 @@
                                 <input type="text" name="initial_password" placeholder="Set Temp Password" required style="padding: 5px; border-radius: 5px; border: none; outline: none;">
                                 <button type="submit" style="background: var(--secondary); color: #fff; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; margin-left: 5px;">Approve & Add</button>
                             </form>
+
+                            <form action="{{ url_for('decline_request', request_id=req.request_id) }}" method="POST" style="margin: 0;" onsubmit="return confirm('Are you sure you want to securely delete this join request? This cannot be undone.');">
+                                <button type="submit" style="background: rgba(232, 65, 24, 0.1); border: 1px solid rgba(232, 65, 24, 0.5); color: #ff7675; padding: 5px 10px; border-radius: 5px; cursor: pointer; transition: all 0.3s ease;" onmouseover="this.style.background='rgba(232, 65, 24, 0.3)'" onmouseout="this.style.background='rgba(232, 65, 24, 0.1)'">Decline</button>
+                            </form>
+
                         </td>
                     </tr>
                     {% endfor %}
