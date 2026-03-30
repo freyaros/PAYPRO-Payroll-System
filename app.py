@@ -172,15 +172,22 @@ def register():
 @app.route('/hr_register', methods=['GET', 'POST'])
 def hr_register():
     if request.method == 'POST':
-        # --- THE SECURITY GATEKEEPER ---
-        # Only people who know this exact string can become admins!
+        # --- 1. THE SECURITY GATEKEEPER ---
         SECRET_COMPANY_TOKEN = "NEXA-ADMIN-2026"
         submitted_token = request.form.get('company_token')
         
         if submitted_token != SECRET_COMPANY_TOKEN:
             flash('SECURITY ALERT: Invalid Company Master Token. Access Denied.')
             return redirect(url_for('hr_register'))
-        # -------------------------------
+
+        # --- 2. THE PASSWORD STRENGTH CHECKER ---
+        raw_password = request.form['password']
+        is_strong, msg = check_password_strength(raw_password)
+        
+        if not is_strong:
+            flash(f'Security Error: {msg}')
+            return redirect(url_for('hr_register'))
+        # ----------------------------------------
 
         emp_id = request.form['employee_id'] 
         first_name = request.form['first_name']
@@ -190,18 +197,16 @@ def hr_register():
         job_title = request.form['job_title']
         contact = request.form['contact']
         
-      
-        
-        hashed_password = generate_password_hash(request.form['password'])
+        # Hash the validated password!
+        hashed_password = generate_password_hash(raw_password)
 
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
-            # Added address to the insert statement (remove if you skipped address for HR)
             cursor.execute("""
-                INSERT INTO Employee (employee_id, first_name, last_name, dob, gender, job_title, contact, address, password, role) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'HR')
-            """, (emp_id, first_name, last_name, dob, gender, job_title, contact, address, hashed_password))
+                INSERT INTO Employee (employee_id, first_name, last_name, dob, gender, job_title, contact, password, role) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'HR')
+            """, (emp_id, first_name, last_name, dob, gender, job_title, contact, hashed_password))
             conn.commit()
             flash('HR Registration successful! Welcome to the Admin team.')
             return redirect(url_for('hr_login'))
@@ -210,6 +215,7 @@ def hr_register():
         finally:
             cursor.close()
             conn.close()
+            
     return render_template('hr_register.html')
 
 # --- PASSWORD RECOVERY ---
@@ -240,6 +246,14 @@ def reset_password():
         
     if request.method == 'POST':
         new_password = request.form['password']
+        
+        # --- THE FINAL SECURITY LOCKDOWN ---
+        is_strong, msg = check_password_strength(new_password)
+        if not is_strong:
+            flash(f'Security Error: {msg}')
+            return redirect(url_for('reset_password'))
+        # -----------------------------------
+        
         hashed_password = generate_password_hash(new_password)
         
         conn = get_db_connection()
@@ -251,7 +265,8 @@ def reset_password():
         
         session.pop('reset_emp_id', None)
         flash('Password Reset Successful! You may now log in.')
-        return redirect(url_for('index'))
+        return redirect(url_for('index'))  # Or employee_login
+        
     return render_template('reset_password.html')
 
 # --- AUTOMATED CHECK-OUT & MULTI-SESSION MATH ---
@@ -334,13 +349,19 @@ def attendance():
 
 @app.route('/salary')
 def salary():
-    if 'loggedin' not in session: return redirect(url_for('employee_login'))
+    if 'loggedin' not in session or session.get('role') != 'Employee': 
+        return redirect(url_for('employee_login'))
+        
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
+    
+    # Fetch all salary records for this specific employee, newest first
     cursor.execute("SELECT * FROM Salary WHERE employee_id = %s ORDER BY pay_date DESC", (session['employee_id'],))
     records = cursor.fetchall()
+    
     cursor.close()
     conn.close()
+    
     return render_template('salary.html', records=records)
 
 @app.route('/leave', methods=['GET', 'POST'])
@@ -429,7 +450,7 @@ def admin_employees():
 
 @app.route('/change_password', methods=['GET', 'POST'])
 def change_password():
-    if 'loggedin' not in session: return redirect(url_for('employee_login'))
+    if 'loggedin' not in session: return redirect(url_for('index'))
     
     if request.method == 'POST':
         current_password = request.form['current_password']
