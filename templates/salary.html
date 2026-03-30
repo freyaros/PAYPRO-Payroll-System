@@ -1,93 +1,68 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="glass-panel" style="max-width: 1000px;">
+<div class="glass-panel" style="max-width: 1000px; margin: 0 auto;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
-        <h2 style="font-family: 'Syne', sans-serif; font-size: 28px; color: var(--primary); margin: 0;">Salary & Payslips</h2>
-        <button onclick="window.print()" class="btn-secondary" style="width: auto; padding: 10px 20px; margin: 0;">🖨️ Print Record</button>
+        <h2 style="font-family: 'Syne', sans-serif; font-size: 28px; color: var(--secondary);">My Payslips</h2>
+        <span style="background: rgba(0, 240, 255, 0.1); color: #00f0ff; padding: 5px 15px; border-radius: 20px; font-size: 14px; border: 1px solid #00f0ff;">Confidential</span>
     </div>
-    
-    <div style="overflow-x: auto;">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Pay Period</th>
-                    <th>Earnings (Base + Allowances)</th>
-                    <th>Deductions & Tax</th>
-                    <th>Net Pay</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for record in records %}
-                <tr>
-                    <td style="font-weight: bold; color: #fff;">{{ record.pay_period }}<br>
-                        <span style="font-size: 11px; color: rgba(255,255,255,0.5); font-weight: normal;">Paid on: {{ record.pay_date }}</span>
-                    </td>
+
+    {% if records %}
+        <div style="display: grid; gap: 20px;">
+            {% for row in records %}
+            <div style="background: rgba(0,0,0,0.4); border: 1px solid var(--glass-border); border-radius: 12px; padding: 25px; transition: all 0.3s ease;" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--glass-border)'">
+                
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 15px;">
+                    <div>
+                        <h3 style="color: #fff; margin-bottom: 5px;">Pay Period: <span style="color: var(--primary);">{{ row.pay_period }}</span></h3>
+                        <p style="color: rgba(255,255,255,0.5); font-size: 12px;">Processed on: {{ row.pay_date }}</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <h2 style="color: #4cd137; font-family: 'Courier New', monospace; font-size: 24px;">₹{{ "%.2f"|format(row.net_pay) }}</h2>
+                        <p style="color: rgba(255,255,255,0.5); font-size: 12px;">Net In-Hand Salary</p>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
                     
-                    <td>
-                        Base: ${{ record.base_pay }}<br>
-                        <span style="color: #4cd137; font-size: 12px;">+ Allowances: ${{ record.allowances }}</span><br>
-                        {% if record.bonuses > 0 %}
-                        <span style="color: #4cd137; font-size: 12px;">+ Bonus: ${{ record.bonuses }}</span>
-                        {% endif %}
-                    </td>
-                    
-                    <td>
-                        <span style="color: #e84118; font-size: 12px;">- Deductions: ${{ record.deductions }}</span><br>
-                        <span style="color: #e84118; font-size: 12px;">- Tax: ${{ record.tax }}</span>
-                    </td>
-                    
-                    <td style="color: var(--primary); font-family: 'Syne', sans-serif; font-weight: bold; font-size: 18px;">
-                        ${{ record.net_pay }}
-                    </td>
-                    
-                    <td>
-                        <span class="status-badge 
-                            {% if record.status == 'Paid' %}status-approved
-                            {% elif record.status == 'Pending' %}status-pending
-                            {% else %}status-rejected{% endif %}">
-                            {{ record.status }}
-                        </span>
-                    </td>
-                    
-                    <td>
-                        <button onclick="alert('Payslip PDF generation will be available soon!')" style="background: transparent; border: 1px solid var(--primary); color: var(--primary); padding: 5px 10px; border-radius: 8px; cursor: pointer;">View Full</button>
-                    </td>
-                </tr>
-                {% else %}
-                <tr><td colspan="6" style="text-align: center; color: rgba(255,255,255,0.5); padding: 30px;">No salary records found for your account.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+                    <div style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px;">
+                        <p style="color: rgba(255,255,255,0.6); font-size: 12px; margin-bottom: 5px;">Basic Pay</p>
+                        <h4 style="color: #fff; font-size: 16px;">₹{{ "%.2f"|format(row.base_pay) }}</h4>
+                    </div>
+
+                    <div style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px;">
+                        <p style="color: rgba(255,255,255,0.6); font-size: 12px; margin-bottom: 5px;">+ Allowances (HRA, TA)</p>
+                        <h4 style="color: #00f0ff; font-size: 16px;">₹{{ "%.2f"|format(row.allowances) }}</h4>
+                    </div>
+
+                    <div style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px;">
+                        <p style="color: rgba(255,255,255,0.6); font-size: 12px; margin-bottom: 5px;">+ Performance Bonus</p>
+                        <h4 style="color: #00f0ff; font-size: 16px;">₹{{ "%.2f"|format(row.bonuses) }}</h4>
+                    </div>
+
+                    <div style="background: rgba(232, 65, 24, 0.05); padding: 15px; border-radius: 8px; border: 1px solid rgba(232, 65, 24, 0.2);">
+                        <p style="color: #ff7675; font-size: 12px; margin-bottom: 5px;">- LOP Deductions</p>
+                        <h4 style="color: #ff4d4d; font-size: 16px;">₹{{ "%.2f"|format(row.deductions) }}</h4>
+                    </div>
+
+                </div>
+
+                <div style="margin-top: 20px; text-align: right;">
+                    <button onclick="window.print()" class="btn-secondary" style="font-size: 12px; padding: 8px 15px; width: auto; background: transparent; border: 1px solid rgba(255,255,255,0.3); color: #fff;">🖨️ Download / Print Payslip</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div style="text-align: center; padding: 50px 20px;">
+            <div style="font-size: 50px; margin-bottom: 20px;">💸</div>
+            <h3 style="color: #fff; margin-bottom: 10px;">No Payslips Yet</h3>
+            <p style="color: rgba(255,255,255,0.5);">Your generated salary records will appear here after the first payroll cycle.</p>
+        </div>
+    {% endif %}
 
     <div style="margin-top: 30px; text-align: center;">
-        <a href="{{ url_for('dashboard') }}" class="btn-secondary" style="width: auto; padding: 10px 20px; display: inline-block;">&larr; Back to Dashboard</a>
+        <a href="{{ url_for('dashboard') }}" class="btn-secondary" style="width: auto; padding: 10px 20px; text-decoration: none;">&larr; Back to Dashboard</a>
     </div>
 </div>
-
-<style>
-    .data-table { width: 100%; border-collapse: collapse; text-align: left; }
-    .data-table th { padding: 15px; background: rgba(0, 240, 255, 0.1); color: var(--primary); font-family: 'Syne', sans-serif; letter-spacing: 1px; font-size: 13px; text-transform: uppercase;}
-    .data-table td { padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.05); color: rgba(255,255,255,0.8); vertical-align: middle; line-height: 1.6;}
-    .data-table tr:hover td { background: rgba(255,255,255,0.02); }
-    
-    /* Status Badges */
-    .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;}
-    .status-approved { background: rgba(76, 209, 55, 0.2); color: #4cd137; }
-    .status-pending { background: rgba(251, 197, 49, 0.2); color: #fbc531; }
-    .status-rejected { background: rgba(232, 65, 24, 0.2); color: #e84118; }
-
-    /* Hide unneeded elements when printing */
-    @media print {
-        body { background: #fff; color: #000; }
-        .ambient-bg, .grid-overlay, .header, .btn-secondary, button { display: none !important; }
-        .glass-panel { background: none; border: none; filter: none; padding: 0; box-shadow: none;}
-        .data-table th { background: #f0f0f0; color: #000; }
-        .data-table td { color: #000; border-bottom: 1px solid #ccc;}
-        span { color: #000 !important; }
-    }
-</style>
 {% endblock %}
