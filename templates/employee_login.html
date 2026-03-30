@@ -5,7 +5,7 @@
     <h2 style="font-family: 'Syne', sans-serif; font-size: 28px; color: #fff; margin-bottom: 30px;">Welcome Back</h2>
     
     <form method="POST" action="{{ url_for('employee_login') }}" style="display: flex; flex-direction: column; gap: 20px;">
-        <input type="number" name="employee_id" placeholder="Employee ID" required class="form-input">
+        <input type="number" name="employee_id" placeholder="Employee ID" min="1" onkeypress="return event.charCode >= 48 && event.charCode <= 57" required style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff;">
         <div style="display: flex; flex-direction: column; text-align: left;">
             <input type="password" name="password" placeholder="Password" required class="form-input">
             <a href="{{ url_for('forgot_password') }}" style="color: rgba(255,255,255,0.5); text-decoration: none; font-size: 12px; margin-top: 8px; margin-left: 10px; transition: 0.3s; width: fit-content;" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='rgba(255,255,255,0.5)'">Forgot Password?</a>

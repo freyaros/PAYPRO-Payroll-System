@@ -59,6 +59,17 @@
         .btn-primary:hover { background: linear-gradient(135deg, rgba(0, 240, 255, 0.3) 0%, rgba(255, 0, 212, 0.3) 100%); transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3), 0 0 20px var(--glow-cyan); }
         .btn-secondary { display: inline-block; width: 100%; padding: 16px; margin-bottom: 15px; background: transparent; border: 1px solid var(--glass-border); border-radius: 50px; color: rgba(255, 255, 255, 0.7); font-family: 'Syne', sans-serif; font-size: 14px; text-align: center; text-decoration: none; transition: all 0.3s ease; }
         .btn-secondary:hover { border-color: rgba(255, 255, 255, 0.3); color: #ffffff; background: rgba(255, 255, 255, 0.05); }
+        /* Remove scroll arrows from number inputs in Chrome, Safari, Edge, Opera */
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+        }
+
+        /* Remove scroll arrows from number inputs in Firefox */
+        input[type="number"] {
+        -moz-appearance: textfield;
+        }
     </style>
 </head>
 <body>
