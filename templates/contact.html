@@ -9,11 +9,25 @@
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
         <div style="display: flex; flex-direction: column; gap: 20px;">
-            <input type="text" placeholder="Your Name" class="contact-input">
-            <input type="email" placeholder="Your Email" class="contact-input">
-            <input type="text" placeholder="Subject" class="contact-input">
-            <textarea placeholder="Your Message" class="contact-input" style="min-height: 150px; resize: vertical;"></textarea>
-            <button class="btn-primary" style="margin-top: 10px;">Send Message</button>
+           <form action="{{ url_for('contact') }}" method="POST" style="display: flex; flex-direction: column; gap: 15px;">
+    
+    <div>
+        <label style="color: var(--primary); font-size: 14px;">Your Name</label>
+        <input type="text" name="name" required style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff;">
+    </div>
+
+    <div>
+        <label style="color: var(--primary); font-size: 14px;">Email Address</label>
+        <input type="email" name="email" required style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff;">
+    </div>
+
+    <div>
+        <label style="color: var(--primary); font-size: 14px;">Message</label>
+        <textarea name="message" required rows="4" style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff;"></textarea>
+    </div>
+
+    <button type="submit" class="btn-primary" style="margin-top: 10px;">Send Message</button>
+</form>
         </div>
 
         <div class="contact-details" style="color: rgba(255,255,255,0.8); line-height: 1.8;">
@@ -23,7 +37,7 @@
     <p>🗺️ Bengaluru, Karnataka 560100, India</p>
     <br>
     <h3 style="color: var(--secondary); margin-bottom: 15px;">Direct Contact</h3>
-    <p>📞 +91 98765 43210</p>
+    <p>📞 +91 9XXXXXXXXX</p>
     <p>✉️ hr@nexaverse.in</p>
 </div>
             
@@ -35,13 +49,7 @@
                 </div>
             </div>
             
-            <div class="contact-item">
-                <div class="contact-icon">📞</div>
-                <div>
-                    <h4 style="color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 5px;">PHONE</h4>
-                    <p style="color: #fff; font-size: 14px;">+1 (555) 123-4567</p>
-                </div>
-            </div>
+            
         </div>
     </div>
     

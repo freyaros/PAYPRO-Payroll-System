@@ -41,8 +41,18 @@ def index(): return render_template('index.html')
 @app.route('/about')
 def about(): return render_template('about.html')
 
-@app.route('/contact')
-def contact(): return render_template('contact.html')
+@app.route('/contact', methods=['GET', 'POST'])
+def contact(): 
+    if request.method == 'POST':
+        # Grab the user's name from the form
+        name = request.form.get('name', 'Guest')
+        
+        # In a real app, you would save this to the DB or email it to HR.
+        # For now, we just flash a success message!
+        flash(f'Thank you, {name}! Your message has been sent to our support team.')
+        return redirect(url_for('contact'))
+        
+    return render_template('contact.html')
 
 @app.route('/admin/accrue_leaves')
 def admin_accrue_leaves():
