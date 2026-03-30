@@ -4,6 +4,7 @@ import mysql.connector
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import re
+import json
 app = Flask(__name__)
 app.secret_key = 'nexaverse_payroll_super_secret_key' 
 
@@ -171,6 +172,16 @@ def register():
 @app.route('/hr_register', methods=['GET', 'POST'])
 def hr_register():
     if request.method == 'POST':
+        # --- THE SECURITY GATEKEEPER ---
+        # Only people who know this exact string can become admins!
+        SECRET_COMPANY_TOKEN = "NEXA-ADMIN-2026"
+        submitted_token = request.form.get('company_token')
+        
+        if submitted_token != SECRET_COMPANY_TOKEN:
+            flash('SECURITY ALERT: Invalid Company Master Token. Access Denied.')
+            return redirect(url_for('hr_register'))
+        # -------------------------------
+
         emp_id = request.form['employee_id'] 
         first_name = request.form['first_name']
         last_name = request.form['last_name']
@@ -178,15 +189,19 @@ def hr_register():
         gender = request.form['gender']
         job_title = request.form['job_title']
         contact = request.form['contact']
+        
+      
+        
         hashed_password = generate_password_hash(request.form['password'])
 
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
+            # Added address to the insert statement (remove if you skipped address for HR)
             cursor.execute("""
-                INSERT INTO Employee (employee_id, first_name, last_name, dob, gender, job_title, contact, password, role) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'HR')
-            """, (emp_id, first_name, last_name, dob, gender, job_title, contact, hashed_password))
+                INSERT INTO Employee (employee_id, first_name, last_name, dob, gender, job_title, contact, address, password, role) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'HR')
+            """, (emp_id, first_name, last_name, dob, gender, job_title, contact, address, hashed_password))
             conn.commit()
             flash('HR Registration successful! Welcome to the Admin team.')
             return redirect(url_for('hr_login'))
@@ -447,6 +462,8 @@ def change_password():
         
     return render_template('change_password.html')
 
+
+
 @app.route('/admin/payroll', methods=['GET', 'POST'])
 def admin_payroll():
     if 'loggedin' not in session or session.get('role') != 'HR': return redirect(url_for('hr_login'))
@@ -457,73 +474,64 @@ def admin_payroll():
         emp_id = request.form['employee_id']
         pay_period = request.form['pay_period']
         base_pay = float(request.form['base_pay'])
-        allowances = float(request.form['allowances'])
-        bonuses = float(request.form['bonuses'])
-        standard_deductions = float(request.form['deductions'])
-        tax = float(request.form['tax'])
         
-        # Fetch ONLY "Unpaid" approved leaves to calculate Loss of Pay!
+        # 1. AUTO-CALCULATE BASED ON INDIAN IT CTC STRUCTURE
+        # Allowances: 50% of Basic (HRA) + ₹1600 (TA)
+        allowances = (base_pay * 0.50) + 1600
+        # Bonuses: 25% of Basic (Equates to approx 10% of total CTC)
+        bonuses = base_pay * 0.25 
+        
+        # 2. Fetch ONLY "Unpaid" approved leaves for LOP
         cursor.execute("SELECT start_date, end_date FROM Leave_Table WHERE employee_id = %s AND status = 'Approved' AND leave_type = 'Unpaid'", (emp_id,))
         approved_leaves = cursor.fetchall()
         
         total_leave_days = 0
         for leave in approved_leaves:
-            try:
-                if isinstance(leave['start_date'], str):
-                    start = datetime.strptime(leave['start_date'], '%Y-%m-%d')
-                    end = datetime.strptime(leave['end_date'], '%Y-%m-%d')
-                else:
-                    start = leave['start_date']
-                    end = leave['end_date']
-                total_leave_days += (end - start).days + 1 
-            except Exception as e:
-                print(f"Date math error: {e}")
-        
-        # --- ⚙️ NEW LOP CALCULATION LOGIC ---
-        
-        # Assumption: 1 Leave Day = 8 Hours absent (40 hrs / 5 days)
+            start = datetime.strptime(str(leave['start_date']), '%Y-%m-%d')
+            end = datetime.strptime(str(leave['end_date']), '%Y-%m-%d')
+            total_leave_days += (end - start).days + 1 
+            
+        # 3. Calculate LOP Deductions
         hours_absent = total_leave_days * 8
-        
-        # Base input for the formula
         monthly_gross_salary = base_pay + allowances + bonuses
-        
-        # Step 1: Convert Monthly to Annual
-        annual_salary = monthly_gross_salary * 12
-        
-        # Step 2: Calculate Weekly Salary
-        weekly_salary = annual_salary / 52
-        
-        # Step 3: Determine Hourly Rate
-        hourly_rate = weekly_salary / 40
-        
-        # Step 4: Calculate Total LOP Deduction
+        hourly_rate = (monthly_gross_salary * 12) / 52 / 40
         total_lop_deduction = hourly_rate * hours_absent
         
-        # Step 5: Calculate Final Monthly Pay (Including standard taxes/deductions)
-        total_deductions = standard_deductions + tax + total_lop_deduction
-        net_monthly_pay = monthly_gross_salary - total_deductions
-        
-        # -----------------------------------
-        
+        # 4. Final Net Pay (No Tax!)
+        net_monthly_pay = monthly_gross_salary - total_lop_deduction
         pay_date = datetime.today().strftime('%Y-%m-%d')
         
-        # Insert into database, combining standard deductions with the new LOP deduction
+        # Insert into database (Notice we removed the 'tax' column here!)
         cursor.execute("""
-            INSERT INTO Salary (employee_id, pay_period, base_pay, allowances, bonuses, deductions, tax, net_pay, status, pay_date) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Paid', %s)
-        """, (emp_id, pay_period, base_pay, allowances, bonuses, (standard_deductions + total_lop_deduction), tax, net_monthly_pay, pay_date))
+            INSERT INTO Salary (employee_id, pay_period, base_pay, allowances, bonuses, deductions, net_pay, status, pay_date) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'Paid', %s)
+        """, (emp_id, pay_period, base_pay, allowances, bonuses, total_lop_deduction, net_monthly_pay, pay_date))
         conn.commit()
         
-        # Flash dynamic success message
-        # Flash dynamic success message with RUPEES
-        flash(f'Salary processed! {hours_absent} hrs absent. Hourly Rate: ₹{hourly_rate:.2f}. LOP Deduction: ₹{total_lop_deduction:.2f}. Final Net Pay: ₹{net_monthly_pay:.2f}')
+        flash(f'Salary processed! LOP Deduction: ₹{total_lop_deduction:.2f}. Final Net Pay: ₹{net_monthly_pay:.2f}')
         return redirect(url_for('admin_payroll'))
         
+    # --- GET REQUEST: PREPARE DATA FOR THE FRONTEND ---
     cursor.execute("SELECT employee_id, first_name, last_name FROM Employee WHERE role = 'Employee'")
     employees = cursor.fetchall()
+    
+    # Build a dictionary of LOP Hours for every employee so JavaScript can use it instantly
+    emp_lop_hours = {}
+    for emp in employees:
+        cursor.execute("SELECT start_date, end_date FROM Leave_Table WHERE employee_id = %s AND status = 'Approved' AND leave_type = 'Unpaid'", (emp['employee_id'],))
+        leaves = cursor.fetchall()
+        days = 0
+        for l in leaves:
+            start = datetime.strptime(str(l['start_date']), '%Y-%m-%d')
+            end = datetime.strptime(str(l['end_date']), '%Y-%m-%d')
+            days += (end - start).days + 1
+        emp_lop_hours[emp['employee_id']] = days * 8
+        
     cursor.close()
     conn.close()
-    return render_template('admin_payroll.html', employees=employees)
+    
+    # We pass the dictionary to HTML as a JSON string
+    return render_template('admin_payroll.html', employees=employees, lop_data=json.dumps(emp_lop_hours))
 
 @app.route('/admin/leaves', methods=['GET', 'POST'])
 def admin_leaves():
