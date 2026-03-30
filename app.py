@@ -41,17 +41,18 @@ def contact(): return render_template('contact.html')
 
 @app.route('/admin/accrue_leaves')
 def admin_accrue_leaves():
-    if 'loggedin' not in session or session.get('role') != 'HR': return redirect(url_for('hr_login'))
+    if 'loggedin' not in session or session.get('role') != 'HR': 
+        return redirect(url_for('hr_login'))
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    # This adds 1 CL and 1 PL to every employee's existing balance (Carry-Forward!)
     cursor.execute("UPDATE Employee SET cl_balance = cl_balance + 1, pl_balance = pl_balance + 1 WHERE role = 'Employee'")
     conn.commit()
     cursor.close()
     conn.close()
     
-    flash('Monthly Accrual Complete! All employees received +1 Casual and +1 Paid leave.')
+    # NEW FLASH MESSAGE
+    flash('Manual Override Complete: +1 CL and +1 PL distributed. (Note: The database also does this automatically on the 1st of every month).')
     return redirect(url_for('admin_leaves'))
 
 # --- AUTHENTICATION & MULTI-SESSION CHECK-IN ---
