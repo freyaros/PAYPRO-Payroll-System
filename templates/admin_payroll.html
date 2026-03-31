@@ -1,29 +1,29 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="glass-panel" style="max-width: 800px;">
+<div class="glass-panel" style="max-width: 800px; margin: 0 auto;">
     <h2 style="font-family: 'Syne', sans-serif; font-size: 28px; color: var(--secondary); margin-bottom: 30px; text-align: center;">Generate Payroll</h2>
     
     <form method="POST" action="{{ url_for('admin_payroll') }}" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
         
         <div style="grid-column: 1 / -1; display: flex; flex-direction: column;">
             <label style="color: rgba(255,255,255,0.6); font-size: 12px; margin-bottom: 5px; margin-left: 10px;">Select Employee</label>
-            <select name="employee_id" id="employeeSelect" required onchange="calculatePayroll()" class="form-input" style="background: var(--dark-2);">
-                <option value="" disabled selected>Choose an Employee...</option>
+            <select name="employee_id" id="employeeSelect" required onchange="calculatePayroll()" class="form-input" style="background: var(--dark-2); color: #ffffff;">
+                <option value="" disabled selected style="color: rgba(255,255,255,0.5);">Choose an Employee...</option>
                 {% for emp in employees %}
-                    <option value="{{ emp.employee_id }}">{{ emp.first_name }} {{ emp.last_name }} (ID: {{ emp.employee_id }})</option>
+                    <option value="{{ emp.employee_id }}" style="color: #ffffff;">{{ emp.first_name }} {{ emp.last_name }} (ID: {{ emp.employee_id }})</option>
                 {% endfor %}
             </select>
         </div>
 
         <div style="display: flex; flex-direction: column;">
             <label style="color: rgba(255,255,255,0.6); font-size: 12px; margin-bottom: 5px; margin-left: 10px;">Pay Period</label>
-            <input type="month" name="pay_period" required class="form-input">
+            <input type="month" name="pay_period" required class="form-input" style="color: #ffffff;">
         </div>
 
         <div style="display: flex; flex-direction: column;">
             <label style="color: #00f0ff; font-size: 12px; margin-bottom: 5px; margin-left: 10px; font-weight: bold;">Base Pay (₹) *Input Required*</label>
-            <input type="number" step="0.01" name="base_pay" id="basePay" required oninput="calculatePayroll()" class="form-input" placeholder="0.00" style="border-color: #00f0ff;">
+            <input type="number" step="0.01" name="base_pay" id="basePay" required oninput="calculatePayroll()" class="form-input" placeholder="0.00" style="border-color: #00f0ff; color: #ffffff;">
         </div>
 
         <div style="display: flex; flex-direction: column;">
@@ -62,7 +62,19 @@
 
         // 1. Calculate Allowances (50% HRA + 1600 TA)
         let allowances = (basePay * 0.50) + 1600;
+        document.getElementById('allowances').value = allowances.toFixed(2);
         
-        // 2. Calculate Bonus (25% of
-
-{% endblock %}  
+        // 2. Calculate Bonus (25% of base pay) - FIX: Completed cut-off script
+        let bonuses = basePay * 0.25; 
+        document.getElementById('bonuses').value = bonuses.toFixed(2);
+        
+        // 3. Calculate LOP Deductions (if the employee has data in lopData)
+        let lopHours = lopData[empId] || 0;
+        // Assuming base pay is for ~160 hours a month (adjust formula as needed)
+        let hourlyRate = basePay / 160; 
+        let deductions = lopHours * hourlyRate;
+        
+        document.getElementById('deductions').value = deductions.toFixed(2);
+    }
+</script>
+{% endblock %}

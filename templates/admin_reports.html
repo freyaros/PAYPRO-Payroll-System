@@ -15,7 +15,7 @@
         
         <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255, 0, 212, 0.3); border-radius: 12px; padding: 25px; text-align: center;">
             <h4 style="color: rgba(255,255,255,0.6); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">Total Salary Payouts</h4>
-            <div style="font-family: 'Syne', sans-serif; font-size: 36px; color: var(--secondary); font-weight: bold;">${{ total_salary }}</div>
+            <div style="font-family: 'Syne', sans-serif; font-size: 36px; color: var(--secondary); font-weight: bold;">₹{{ total_salary }}</div>
         </div>
         
         <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(251, 197, 49, 0.3); border-radius: 12px; padding: 25px; text-align: center;">
@@ -41,7 +41,7 @@
                     <td>{{ payout.pay_date }}</td>
                     <td>{{ payout.first_name }} {{ payout.last_name }}</td>
                     <td>{{ payout.pay_period }}</td>
-                    <td style="color: var(--secondary); font-weight: bold;">${{ payout.net_pay }}</td>
+                    <td style="color: var(--secondary); font-weight: bold;">₹{{ payout.net_pay }}</td>
                 </tr>
                 {% else %}
                 <tr><td colspan="4" style="text-align: center; color: rgba(255,255,255,0.5); padding: 20px;">No payout history available.</td></tr>
